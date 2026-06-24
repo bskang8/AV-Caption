@@ -19,6 +19,7 @@ version = "1.0.0"
 requires-python = ">=3.10"
 dependencies = [
   "cosmos-reason2-utils",
+  "caption-refine",
 ]
 
 [project.optional-dependencies]
@@ -33,8 +34,10 @@ dev = [
 
 [tool.uv.sources]
 cosmos-reason2-utils = { workspace = true }
+caption-refine = { workspace = true }
 
 [tool.uv.workspace]
 members = [
   "cosmos_reason2_utils",
+  "caption_refine",
 ]

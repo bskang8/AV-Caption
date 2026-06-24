@@ -18,6 +18,13 @@
 /outputs
 /results
 /checkpoints
+
+# Local data files
+.claude/
+/datasets/
+/lane_video/
+*.parquet
+*.mp4
 /examples/**/data
 /examples/**/outputs
 /examples/**/results

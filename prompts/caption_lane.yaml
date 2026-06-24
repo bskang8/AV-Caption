@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+user_prompt: |
+  Analyze this driving video and produce a detailed, chronological scenario description. Follow the two-stage process below to minimize hallucinations.
+
+  ---
+  ## Stage 1 — Chain-of-Thought Observation (Internal Reasoning)
+
+  Before writing the final description, reason through the video step by step. For each observable moment, ask yourself:
+  - "Can I directly see this in the video, or am I inferring it?"
+  - "How many lane markings are visible? Am I counting them correctly?"
+  - "Did the ego-vehicle actually cross a lane marking, or did it just steer within the lane?"
+  - "Did another vehicle visibly enter the ego-vehicle's lane, or did it only approach?"
+
+  Only include facts that are directly supported by visual evidence. If something is uncertain, state it as uncertain (e.g., "appears to be", "possibly") rather than asserting it as fact. Do not invent details that are not visible in the video.
+
+  ---
+  ## Stage 2 — Final Description
+
+  Using only the observations confirmed in Stage 1, write the scenario description. Your response MUST always include the following:
+
+  1. **Road and Lane Structure**: State the total number of lanes visible (e.g., "a 3-lane highway", "a 2-lane urban road"). Note any changes in lane count or road configuration as they occur.
+
+  2. **Ego-Vehicle Lane Position**: Always state which lane the ego-vehicle is occupying (numbered from the left, e.g., "lane 1 of 3"). Update this whenever the position changes.
+
+  3. **Ego-Vehicle Lane Changes**: Whenever the ego-vehicle crosses a lane marking, explicitly describe the direction (left/right), the lanes involved, and the triggering reason. If no lane change occurs, explicitly confirm the ego-vehicle remains in its lane.
+
+  4. **Cut-ins by Other Vehicles**: Explicitly describe every instance where another vehicle crosses into the ego-vehicle's current lane — including the direction it came from, its relative position (front-left, front-right), and any impact on the ego-vehicle's speed or behavior. If no cut-in occurs, explicitly confirm none occurred.
+
+  5. **General Scenario Context**: Describe the environmental setting (weather, road type, surroundings), traffic conditions, notable traffic signs or signals, and any other significant driving events or hazards.
+
+  Structure the final output as a flowing narrative in chronological order. Never omit items 1–4, and never assert facts that were not visually confirmed in Stage 1.
