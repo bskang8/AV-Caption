@@ -17,7 +17,7 @@
 # limitations under the License.
 
 [project]
-name = "cosmos-reason2"
+name = "av-caption"
 version = "1.0.0"
 requires-python = ">=3.10"
 dependencies = [

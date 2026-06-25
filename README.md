@@ -52,21 +52,25 @@ ______________________________________________________________________
 **1) 시스템 패키지 설치**
 
 ```shell
-sudo apt-get install curl ffmpeg git git-lfs unzip
+# NHN 클라우드 컨테이너 환경: sudo 대신 gcsudo 사용
+gcsudo apt-get install curl ffmpeg git git-lfs unzip --fix-missing
 ```
 
 **2) uv 설치**
 
 ```shell
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
+export PATH="$HOME/.local/bin:$PATH"
 ```
+
+> NHN 클라우드 컨테이너 환경에서는 `source $HOME/.local/bin/env` 파일이 생성되지 않습니다.
+> 대신 위와 같이 PATH를 직접 추가하거나, `~/.bashrc`에 해당 줄을 추가해 영구 적용합니다.
 
 **3) 저장소 클론**
 
 ```shell
-git clone <this-repo-url>
-cd cosmos-reason2
+git clone https://github.com/bskang8/AV-Caption.git
+cd AV-Caption
 ```
 
 **4) Python 가상환경 생성 및 패키지 설치**
