@@ -39,8 +39,8 @@ echo "[INFO] GPU=$GPU  PORT=$PORT  MODEL=$VLLM_MODEL"
 echo "[INFO] VIDEOS_DIR=$VIDEOS_DIR"
 
 # ── 1) NVIDIA 라이브러리 경로 — 프로젝트 venv에서 자동 탐색 ─────────────────
-# uv sync --extra cu128 + uv pip install nvidia-cudnn-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12
-# 실행 후 프로젝트 venv에 모든 라이브러리가 포함됨
+# CUDA 12.8: uv sync --extra cu128 + uv pip install nvidia-cudnn-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12
+# CUDA 13.0: uv sync --extra cu130 (cu13 라이브러리가 의존성으로 자동 설치됨)
 
 VENV_NVIDIA="${SCRIPT_DIR}/.venv/lib/python3.12/site-packages/nvidia"
 NVIDIA_LIBS=$(find "${VENV_NVIDIA}" -name "lib" -type d 2>/dev/null | tr '\n' ':')
@@ -54,8 +54,10 @@ for lib in libcudnn.so.9 libcusparseLt.so.0 libnccl.so.2; do
 done
 if [ ${#MISSING[@]} -gt 0 ]; then
     echo "[ERROR] 누락된 NVIDIA 라이브러리: ${MISSING[*]}"
-    echo "        다음 명령어로 설치하세요:"
+    echo "        CUDA 12.8 환경이라면 다음 명령어로 설치하세요:"
     echo "        uv pip install nvidia-cudnn-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12"
+    echo "        CUDA 13.0 환경이라면 다음 명령어로 설치하세요:"
+    echo "        uv pip install nvidia-cudnn-cu13 nvidia-cusparselt-cu13 nvidia-nccl-cu13"
     exit 1
 fi
 

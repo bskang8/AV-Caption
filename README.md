@@ -97,11 +97,15 @@ source .venv/bin/activate
 
 ### NVIDIA 라이브러리 추가 설치
 
-vLLM 실행에 필요한 NVIDIA 라이브러리를 설치합니다 (최초 1회):
+vLLM 실행에 필요한 NVIDIA 라이브러리입니다.
+
+**CUDA 12.8** — `uv sync --extra cu128` 후 별도 설치 필요:
 
 ```shell
 uv pip install nvidia-cudnn-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12
 ```
+
+**CUDA 13.0** — `uv sync --extra cu130` 실행 시 자동 설치되므로 별도 설치 불필요.
 
 > `start_vllm.sh`가 누락된 라이브러리를 자동으로 감지하고 안내합니다.
 
