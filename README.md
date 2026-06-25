@@ -51,8 +51,15 @@ ______________________________________________________________________
 
 **1) 시스템 패키지 설치**
 
+일반 환경 (`sudo` 사용):
+
 ```shell
-# NHN 클라우드 컨테이너 환경: sudo 대신 gcsudo 사용
+sudo apt-get install curl ffmpeg git git-lfs unzip --fix-missing
+```
+
+Clunix 컨테이너 환경 (`gcsudo` 사용):
+
+```shell
 gcsudo apt-get install curl ffmpeg git git-lfs unzip --fix-missing
 ```
 
@@ -60,11 +67,18 @@ gcsudo apt-get install curl ffmpeg git git-lfs unzip --fix-missing
 
 ```shell
 curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
 ```
 
-> NHN 클라우드 컨테이너 환경에서는 `source $HOME/.local/bin/env` 파일이 생성되지 않습니다.
-> 대신 위와 같이 PATH를 직접 추가하거나, `~/.bashrc`에 해당 줄을 추가해 영구 적용합니다.
+설치 후 PATH 적용 방법은 환경에 따라 다릅니다:
+
+- **일반 환경**: 설치 스크립트가 자동으로 `~/.bashrc`에 추가하므로 아래 명령으로 즉시 적용합니다.
+  ```shell
+  source $HOME/.local/bin/env
+  ```
+- **Clunix 컨테이너 환경**: `env` 파일이 생성되지 않으므로 PATH를 직접 추가합니다.
+  ```shell
+  export PATH="$HOME/.local/bin:$PATH"
+  ```
 
 **3) 저장소 클론**
 
