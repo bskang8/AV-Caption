@@ -243,6 +243,18 @@ temp/
 envs.txt
 manifest.json
 
+# AV-Caption: 내부 데이터 경로 및 클립 ID (공개 저장소에 올리지 않음)
+/shards/
+my_clips.json
+fix_clips.json
+sample_20.json
+caption_refine/clip_ids.json
+
+# AV-Caption: 로컬 로그 및 진행 상태 파일
+logs/
+vllm_*.log
+/caption_refine_v2/progress*.json
+
 
 # locks and t5 temp files
 *.locks*

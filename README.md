@@ -1,277 +1,490 @@
-<p align="center">
-    <img src="https://github.com/user-attachments/assets/28f2d612-bbd6-44a3-8795-833d05e9f05f" width="274" alt="NVIDIA Cosmos"/>
-</p>
+# AV-Caption: 자율주행 영상 캡션 생성 파이프라인
 
-<p align="center">
-  🤗 <a href="https://huggingface.co/collections/nvidia/cosmos-reason2">Hugging Face</a>&nbsp | <a href="https://github.com/nvidia-cosmos/cosmos-cookbook">Cosmos Cookbook</a>
-</p>
-
-NVIDIA Cosmos Reason – an open, customizable, reasoning vision language model (VLM) for physical AI and robotics - enables robots and vision AI agents to reason like humans, using prior knowledge, physics understanding and common sense to understand and act in the real world. This model understands space, time, and fundamental physics, and can serve as a planning model to reason what steps an embodied agent might take next.
-
-Cosmos Reason excels at navigating the long tail of diverse scenarios of the physical world with spatial-temporal understanding. Cosmos Reason is post-trained with physical common sense and embodied reasoning data with supervised fine-tuning and reinforcement learning. It uses chain-of-thought reasoning capabilities to understand world dynamics without human annotations.
-
-<!--TOC-->
+자율주행(AV) 전방 카메라 영상 클립에 대해 고품질 자연어 캡션을 생성하는 파이프라인입니다.
+[NVIDIA Cosmos-Reason2](https://huggingface.co/collections/nvidia/cosmos-reason2) VLM을 백엔드로 사용합니다.
 
 ______________________________________________________________________
 
 **Table of Contents**
 
-- [News!](#news)
-- [Model Family](#model-family)
+- [Overview](#overview)
 - [Setup](#setup)
-- [Inference](#inference)
-  - [Minimum GPU Memory](#minimum-gpu-memory)
-  - [Tested Platforms](#tested-platforms)
-  - [Transformers](#transformers)
-  - [Deployment](#deployment)
-    - [Online Serving](#online-serving)
-    - [Offline Inference](#offline-inference)
-- [Post-Training](#post-training)
-- [Quantization](#quantization)
-- [Troubleshooting](#troubleshooting)
-- [Additional Resources](#additional-resources)
-- [License and Contact](#license-and-contact)
+  - [Prerequisites](#prerequisites)
+  - [가상환경 설치](#가상환경-설치)
+  - [NVIDIA 라이브러리 추가 설치](#nvidia-라이브러리-추가-설치)
+- [실행 방법](#실행-방법)
+  - [1. vLLM 서버 시작](#1-vllm-서버-시작)
+  - [2. 단일 영상 추론 (빠른 테스트)](#2-단일-영상-추론-빠른-테스트)
+  - [3. 배치 캡션 생성 — Online 모드](#3-배치-캡션-생성--online-모드)
+  - [4. 배치 캡션 생성 — Offline 모드](#4-배치-캡션-생성--offline-모드)
+  - [5. Shard 파일 생성 (분산 처리)](#5-shard-파일-생성-분산-처리)
+  - [6. Caption Refinement v1 (4-stage)](#6-caption-refinement-v1-4-stage)
+  - [7. Caption Refinement v2 (Motion-Aware, 5-stage)](#7-caption-refinement-v2-motion-aware-5-stage)
+  - [8. 분산 실행](#8-분산-실행)
+- [환경변수 레퍼런스](#환경변수-레퍼런스)
+- [파이프라인 상세](#파이프라인-상세)
+  - [caption_refine v1](#caption_refine-v1)
+  - [caption_refine v2](#caption_refine-v2)
+- [디렉토리 구조](#디렉토리-구조)
 
 ______________________________________________________________________
 
-<!--TOC-->
+## Overview
 
-## News!
+두 가지 캡션 생성·정제 파이프라인을 제공합니다.
 
-* [February 9, 2026] We have Improved documentation and troubleshooting guidance, expanded platform support GB200 and ARM (torchcodec & inference sample fixed), enhanced quantization and training debuggability, and updated CUDA compatibility
-* [December 19, 2025] We have released the Cosmos-Reason2 models and code for Physical AI common sense and embodied reasoning. The 2B and 8B models are now available on Hugging Face.
-
-## Model Family
-
-* [Cosmos-Reason2-2B](https://huggingface.co/nvidia/Cosmos-Reason2-2B)
-* [Cosmos-Reason2-8B](https://huggingface.co/nvidia/Cosmos-Reason2-8B)
+| 파이프라인 | 스테이지 수 | 특징 |
+|---|---|---|
+| `caption_refine` v1 | 4-stage | 기존 캡션 기반 Hallucination 제거 + ODD 추출 + 정제 |
+| `caption_refine_v2` | 5-stage | 센서(egomotion) 선확정 + Motion-Aware ODD + Cross-Validation |
 
 ## Setup
 
-> **This repository only contains documentation/examples/utilities. You do not need it to run inference. See [Inference example](scripts/inference_sample.py) for a minimal inference example. The following setup instructions are only needed to run the examples in this repository.**
+### Prerequisites
 
-Clone the repository:
+- Python **3.10** 이상
+- CUDA **12.8** 또는 **13.0**
+- NVIDIA GPU (추천: H100 24GB 이상)
+- `uv` 패키지 매니저
 
-```shell
-git clone https://github.com/nvidia-cosmos/cosmos-reason2.git
-cd cosmos-reason2
-```
+### 가상환경 설치
 
-Install one of the following environments:
-
-<details id="virtual-environment"><summary><b>Virtual Environment</b></summary>
-
-Install system dependencies:
+**1) 시스템 패키지 설치**
 
 ```shell
 sudo apt-get install curl ffmpeg git git-lfs unzip
 ```
 
-* [uv](https://docs.astral.sh/uv/getting-started/installation/)
+**2) uv 설치**
 
 ```shell
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 ```
 
-* [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/en/guides/cli)
+**3) 저장소 클론**
+
+```shell
+git clone <this-repo-url>
+cd cosmos-reason2
+```
+
+**4) Python 가상환경 생성 및 패키지 설치**
+
+CUDA 12.8 (H100, A100 등):
+
+```shell
+uv sync --extra cu128
+```
+
+CUDA 13.0 (DGX Spark, Jetson AGX Thor):
+
+```shell
+uv sync --extra cu130
+```
+
+**5) 가상환경 활성화**
+
+```shell
+source .venv/bin/activate
+```
+
+> 이후 모든 명령은 가상환경이 활성화된 상태에서 실행하거나, `uv run python ...` 형태로 실행합니다.
+
+### NVIDIA 라이브러리 추가 설치
+
+vLLM 실행에 필요한 NVIDIA 라이브러리를 설치합니다 (최초 1회):
+
+```shell
+uv pip install nvidia-cudnn-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12
+```
+
+> `start_vllm.sh`가 누락된 라이브러리를 자동으로 감지하고 안내합니다.
+
+### Hugging Face 모델 접근 설정
 
 ```shell
 uvx hf auth login
 ```
 
-Install the repository:
+> 또는 환경변수: `export HF_TOKEN="hf_..."`
+
+______________________________________________________________________
+
+## 실행 방법
+
+### 1. vLLM 서버 시작
 
 ```shell
-uv sync --extra cu128
-source .venv/bin/activate
+bash start_vllm.sh [GPU번호] [포트]
 ```
 
-CUDA variants:
-
-| CUDA Version | Arguments | Notes |
-| --- | --- | --- |
-| CUDA 12.8 | `--extra cu128` | [NVIDIA Driver](https://docs.nvidia.com/cuda/archive/12.8.1/cuda-toolkit-release-notes/index.html#cuda-toolkit-major-component-versions) |
-| CUDA 13.0 | `--extra cu130` | [NVIDIA Driver](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-toolkit-release-notes/index.html#cuda-toolkit-major-component-versions) |
-
-For DGX Spark and Jetson AGX, you must use CUDA 13.0. Additionally, you must set `TRITON_PTXAS_PATH` to your system `PTXAS`:
+예시:
 
 ```shell
-export TRITON_PTXAS_PATH="/usr/local/cuda/bin/ptxas"
+bash start_vllm.sh 0 8000   # GPU 0, 포트 8000
+bash start_vllm.sh 1 8001   # GPU 1, 포트 8001
 ```
 
-</details>
-
-<details id="docker-container"><summary><b>Docker Container</b></summary>
-
-Please make sure you have access to Docker on your machine and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) is installed.
-
-Build the container:
-
-```bash
-image_tag=$(docker build -f Dockerfile --build-arg=CUDA_VERSION=12.8.1 -q .)
-```
-
-CUDA variants:
-
-| CUDA Version | Arguments | Notes |
-| --- | --- | --- |
-| CUDA 12.8 | `--build-arg=CUDA_VERSION=12.8.1` | [NVIDIA Driver](https://docs.nvidia.com/cuda/archive/12.8.1/cuda-toolkit-release-notes/index.html#cuda-toolkit-major-component-versions) |
-| CUDA 13.0 | `--build-arg=CUDA_VERSION=13.0.0` | [NVIDIA Driver](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-toolkit-release-notes/index.html#cuda-toolkit-major-component-versions) |
-
-For DGX Spark and Jetson AGX, you must use CUDA 13.0.
-
-Run the container:
-
-```bash
-docker run -it --gpus all --ipc=host --rm -v .:/workspace -v /workspace/.venv -v /workspace/examples/cosmos_rl/.venv -v /root/.cache:/root/.cache -e HF_TOKEN="$HF_TOKEN" $image_tag
-```
-
-Optional arguments:
-
-* `--ipc=host`: Use host system's shared memory, since parallel torchrun consumes a large amount of shared memory. If not allowed by security policy, increase `--shm-size` ([documentation](https://docs.docker.com/engine/containers/run/#runtime-constraints-on-resources)).
-* `-v /root/.cache:/root/.cache`: Mount host cache to avoid re-downloading cache entries.
-* `-e HF_TOKEN="$HF_TOKEN"`: Set Hugging Face token to avoid re-authenticating.
-
-</details>
-
-## Inference
-
-### Minimum GPU Memory
-
-| Model | GPU Memory |
-| --- | --- |
-| Cosmos-Reason2-2B | 24GB |
-| Cosmos-Reason2-8B | 32GB |
-
-### Tested Platforms
-
-Cosmos-Reason2 works on Hopper and Blackwell. Additional hardware configurations may work but are not officially validated at the time of this release.
-
-Examples have been tested on the following devices:
-
-| GPU | CUDA Version | Functionality |
-| --- | --- | --- |
-| NVIDIA H100 | 12.8 | inference/post-training/quantization |
-| NVIDIA GB200 | 13.0 | inference |
-| NVIDIA DGX Spark | 13.0 | inference |
-| NVIDIA Jetson AGX Thor (Edge) | 13.0 | Transformers inference. vLLM inference is coming soon! |
-
-### Transformers
-
-Cosmos-Reason2 is included in [`transformers>=4.57.0`](https://huggingface.co/docs/transformers/en/index).
-
-[Minimal example](scripts/inference_sample.py) ([sample output](assets/outputs/sample.log)):
+환경변수 오버라이드:
 
 ```shell
-python scripts/inference_sample.py
+VLLM_MODEL=nvidia/Cosmos-Reason2-8B \
+VIDEOS_DIR=/path/to/videos \
+bash start_vllm.sh 0 8000
 ```
 
-### Deployment
-
-For deployment and batch inference, we recommend using [`vllm>=0.11.0`](https://docs.vllm.ai/en/stable/).
-
-#### Online Serving
-
-Start the server in a separate terminal or a background process.
-
-> [!TIP]
-> **Docker users:** Run `docker exec -it <CONTAINER_ID> bash` to exec into your container. Find your container ID with `docker ps`.
+서버 준비 확인:
 
 ```shell
-vllm serve nvidia/Cosmos-Reason2-2B \
-  --allowed-local-media-path "$(pwd)" \
-  --max-model-len 16384 \
-  --media-io-kwargs '{"video": {"num_frames": -1}}' \
-  --reasoning-parser qwen3 \
-  --port 8000
+watch -n5 'curl -sf http://localhost:8000/health && echo OK'
 ```
 
-Optional arguments:
-
-* `--max-model-len 16384`: Maximum model length to avoid OOM. Recommended range: 8192 - 16384.
-* `--media-io-kwargs '{"video": {"num_frames": -1}}'`: Allow overriding FPS per sample.
-* `--reasoning-parser qwen3`: Parse reasoning trace.
-* `--port 8000`: Server port. Change if you encounter `Address already in use` errors.
-
-> [!NOTE]
-> **First startup takes a couple minutes** for model loading and CUDA graph compilation. Subsequent starts are faster with cached graphs.
-
-Once ready, the server will print `Application startup complete.`.
-
-> [!WARNING]
-> **Remember to stop the server when done!** The vllm server consumes significant GPU memory while running. To stop it:
->
-> - If running in foreground: Press `Ctrl+C`
-> - If running in background: Find the process with `ps aux | grep vllm` and kill it with `kill <PID>`
-
-Caption a video ([sample output](assets/outputs/caption.log)):
+서버 종료:
 
 ```shell
-cosmos-reason2-inference online --port 8000 -i prompts/caption.yaml --reasoning --videos assets/sample.mp4 --fps 4
+kill $(pgrep -f "vllm serve")
 ```
 
-Embodied reasoning with verbose output ([sample output](assets/outputs/embodied_reasoning.log)):
+---
+
+### 2. 단일 영상 추론 (빠른 테스트)
 
 ```shell
-cosmos-reason2-inference online -v --port 8000 -i prompts/embodied_reasoning.yaml --reasoning --images assets/sample.png
+cosmos-reason2-inference online --port 8000 \
+    -i prompts/caption_detail.yaml \
+    --videos assets/sample.mp4 --fps 4
 ```
 
-To list available arguments:
+---
+
+### 3. 배치 캡션 생성 — Online 모드
+
+vLLM 서버를 미리 띄워 놓고 여러 영상을 순차 처리합니다.
+
+**디렉토리 전체 처리:**
 
 ```shell
-cosmos-reason2-inference online --help
+python batch_caption.py \
+    --input-dir /Data1/home/bskang/cds-data/front_camera_videos \
+    --output-dir /Data1/home/bskang/cds-data/captions \
+    --port 8000 --fps 4 --skip-existing
 ```
 
-#### Offline Inference
-
-Temporally caption a video and save the input frames to `outputs/temporal_localization` for debugging ([sample output](assets/outputs/temporal_localization.log)):
+**Shard 파일 지정 (분산 처리):**
 
 ```shell
-cosmos-reason2-inference offline -v --max-model-len 16384 -i prompts/temporal_localization.yaml --videos assets/sample.mp4 --fps 4 -o outputs/temporal_localization
+# GPU 0 — 서버 포트 8000
+python batch_caption.py \
+    --video-list shards/shard_00.txt \
+    --output-dir /Data1/home/bskang/cds-data/captions \
+    --port 8000 --skip-existing
+
+# GPU 1 — 서버 포트 8001 (별도 터미널)
+python batch_caption.py \
+    --video-list shards/shard_01.txt \
+    --output-dir /Data1/home/bskang/cds-data/captions \
+    --port 8001 --skip-existing
 ```
 
-To list available arguments:
+주요 옵션:
+
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--input-dir` | `/Data1/home/bskang/cds-data/front_camera_videos` | 영상 디렉토리 |
+| `--output-dir` | (필수) | 캡션 .txt 저장 디렉토리 |
+| `--video-list` | — | Shard 파일 경로 (있으면 input-dir 무시) |
+| `--prompt-file` | `prompts/caption_detail.yaml` | 프롬프트 파일 |
+| `--port` | `8000` | vLLM 서버 포트 |
+| `--fps` | `4` | 초당 샘플링 프레임 수 |
+| `--skip-existing` | off | 이미 완료된 파일 건너뜀 |
+
+---
+
+### 4. 배치 캡션 생성 — Offline 모드
+
+외부 서버 등 vLLM HTTP 서버 없이 모델을 직접 메모리에 올려 처리합니다.
 
 ```shell
-cosmos-reason2-inference offline --help
+CUDA_VISIBLE_DEVICES=0 python batch_caption_offline.py \
+    --video-list shards/shard_00.txt \
+    --output-dir /local/captions \
+    --skip-existing
 ```
 
-Common arguments:
+외부 서버로 rsync한 shard를 로컬 경로로 재매핑:
 
-* `--model nvidia/Cosmos-Reason2-2B`: Model name or path.
+```shell
+CUDA_VISIBLE_DEVICES=0 python batch_caption_offline.py \
+    --video-list shards/shard_02.txt \
+    --input-dir /mnt/nas/front_camera_videos \
+    --output-dir /local/captions \
+    --skip-existing
+```
 
-## Post-Training
+주요 옵션:
 
-* [TRL](examples/notebooks/README.md)
-* [Cosmos-RL](examples/cosmos_rl/README.md)
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--model` | `nvidia/Cosmos-Reason2-2B` | 모델명 또는 로컬 경로 |
+| `--video-list` | — | Shard 파일 (없으면 input-dir 전체) |
+| `--input-dir` | 자동 탐색 | 영상 디렉토리 (경로 재매핑 시 사용) |
+| `--output-dir` | (필수) | 캡션 .txt 저장 디렉토리 |
+| `--fps` | `4` | 초당 샘플링 프레임 수 |
+| `--max-model-len` | `16384` | 최대 컨텍스트 길이 |
+| `--max-tokens` | `4096` | 최대 생성 토큰 수 |
+| `--skip-existing` | off | 이미 완료된 파일 건너뜀 |
 
-## Quantization
+---
 
-* [llmcompressor](docs/llmcompressor.md)
+### 5. Shard 파일 생성 (분산 처리)
 
-## Troubleshooting
+여러 GPU / 서버에 영상을 나눠 처리하기 위한 shard 파일을 생성합니다.
 
-See [troubleshooting guide](docs/troubleshooting.md)
+```shell
+python generate_shards.py --num-shards 10 --output-dir shards/
+```
 
-## Additional Resources
+미리보기만 (파일 미생성):
 
-* [Troubleshooting](docs/troubleshooting.md)
-* [Example prompts](prompts/README.md)
-* Cosmos-Reason2 is based on the Qwen3-VL architecture.
-  * [Qwen3-VL Repository](https://github.com/QwenLM/Qwen3-VL)
-  * [Qwen3-VL vLLM](https://docs.vllm.ai/projects/recipes/en/latest/Qwen/Qwen3-VL.html)
-  * [Qwen3 Documentation](https://qwen.readthedocs.io/en/latest/)
-* vLLM
-  * [Online Serving](https://docs.vllm.ai/en/stable/serving/openai_compatible_server/)
-  * [Offline Inference](https://docs.vllm.ai/en/stable/serving/offline_inference/)
-  * [Multimodal Inputs](https://docs.vllm.ai/en/stable/features/multimodal_inputs/)
-  * [LoRA](https://docs.vllm.ai/en/stable/features/lora/)
+```shell
+python generate_shards.py --num-shards 10 --dry-run
+```
 
-## License and Contact
+주요 옵션:
 
-This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use.
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--input-dir` | `/Data1/home/bskang/cds-data/front_camera_videos` | 영상 디렉토리 |
+| `--captions-dir` | `/Data1/home/bskang/cds-data/captions` | 이미 완료된 캡션 디렉토리 |
+| `--num-shards` | `10` | 분할 수 |
+| `--output-dir` | `shards/` | shard 파일 저장 위치 |
 
-NVIDIA Cosmos source code is released under the [Apache 2 License](https://www.apache.org/licenses/LICENSE-2.0).
+---
 
-NVIDIA Cosmos models are released under the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). For a custom license, please contact [cosmos-license@nvidia.com](mailto:cosmos-license@nvidia.com).
+### 6. Caption Refinement v1 (4-stage)
+
+기존 캡션을 기반으로 Hallucination을 제거하고 ODD를 추출하여 정제합니다.
+
+```shell
+# gap 클립 처리 (기본)
+uv run python -m caption_refine.batch_runner --source gap
+
+# 전체 클립 처리 (최대 100개)
+uv run python -m caption_refine.batch_runner --source all --limit 100
+
+# 특정 클립 ID 목록 처리
+uv run python -m caption_refine.batch_runner --ids-file my_clips.json --concurrent 4
+```
+
+주요 옵션:
+
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--source` | `gap` | `gap` / `longtail` / `all` |
+| `--ids-file` | — | clip_id 목록 JSON 파일 |
+| `--limit` | — | 처리 클립 수 제한 |
+| `--concurrent` | `2` | 동시 처리 수 |
+| `--reset` | off | 진행 상태 초기화 후 재처리 |
+
+---
+
+### 7. Caption Refinement v2 (Motion-Aware, 5-stage)
+
+센서(egomotion) 데이터를 선확정하여 더 정확한 ODD와 캡션을 생성합니다.
+
+```shell
+# gap 클립 처리 (기본)
+uv run python -m caption_refine_v2.batch_runner --source gap
+
+# 전체 처리, 동시 4개
+uv run python -m caption_refine_v2.batch_runner --source all --concurrent 4
+
+# 특정 클립 ID 목록
+uv run python -m caption_refine_v2.batch_runner \
+    --ids-file my_clips.json --concurrent 4
+```
+
+주요 옵션:
+
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--source` | `gap` | `gap` / `longtail` / `all` |
+| `--ids-file` | — | clip_id 목록 JSON 파일 |
+| `--limit` | — | 처리 클립 수 제한 |
+| `--concurrent` | `2` | 동시 처리 수 |
+| `--shard-index` | `0` | 분산 샤드 인덱스 |
+| `--total-shards` | `1` | 분산 샤드 총 수 |
+| `--vllm-url` | `$CR_VLLM_URL` | vLLM 엔드포인트 URL |
+| `--reset` | off | 진행 상태 초기화 후 재처리 |
+
+---
+
+### 8. 분산 실행
+
+**vLLM 서버가 이미 실행 중인 경우 (워커만 실행):**
+
+```shell
+bash caption_refine/run_distributed.sh
+```
+
+**vLLM 서버도 함께 시작:**
+
+```shell
+bash caption_refine/run_distributed.sh --start-vllm
+```
+
+**GPU 수, 소스, 동시 처리 수 오버라이드:**
+
+```shell
+TOTAL_GPUS=4 SOURCE=longtail CONCURRENT=6 \
+bash caption_refine/run_distributed.sh
+```
+
+**v2 수동 분산 실행 예시 (GPU 4개):**
+
+```shell
+for i in 0 1 2 3; do
+    CR_VLLM_URL="http://localhost:$((8000 + i))/v1" \
+    uv run python -m caption_refine_v2.batch_runner \
+        --source all \
+        --shard-index $i --total-shards 4 \
+        --concurrent 4 \
+        > logs/worker_shard${i}.log 2>&1 &
+done
+```
+
+______________________________________________________________________
+
+## 환경변수 레퍼런스
+
+### 데이터 경로
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `CR_DATA_ROOT` | `/Data1/home/bskang/cds-data` | 데이터셋 루트 디렉토리 |
+| `CR_VIDEOS_DIR` | `$CR_DATA_ROOT/front_camera_videos` | 전방 카메라 영상 디렉토리 |
+| `CR_OUTPUT_ROOT` | `$CR_DATA_ROOT/caption_v3` | 출력 루트 디렉토리 |
+| `CR_META_DIR` | `$CR_DATA_ROOT/clip_meta` | 클립 센서 메타데이터 디렉토리 |
+| `CR_EGOMOTION_DIR` | `$CR_DATA_ROOT/egomotion_offline` | Egomotion parquet 디렉토리 |
+| `CR_INDEX_DIR` | (AVdata 경로) | clip_id 인덱스 JSON 디렉토리 |
+
+### vLLM / 모델
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `CR_VLLM_URL` | `http://localhost:8000/v1` | vLLM 서버 엔드포인트 |
+| `CR_VLLM_MODEL` | `nvidia/Cosmos-Reason2-2B` | 모델명 |
+| `CR_VLLM_APIKEY` | `EMPTY` | API 키 (로컬 vLLM은 `EMPTY`) |
+| `VLLM_MODEL` | `nvidia/Cosmos-Reason2-2B` | `start_vllm.sh` 모델 오버라이드 |
+| `VIDEOS_DIR` | `$CR_VIDEOS_DIR` | `start_vllm.sh` 미디어 경로 |
+| `MAX_MODEL_LEN` | `16384` | `start_vllm.sh` 최대 컨텍스트 길이 |
+
+### 파이프라인 튜닝
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `CR_CONCURRENT` | `2` | 동시 처리 클립 수 |
+| `CR_NUM_FRAMES` | `12` | 최종 캡션 스테이지 프레임 수 |
+| `CR_NUM_FRAMES_STAGE1` | `8` | Stage 1 프레임 수 |
+| `CR_NUM_FRAMES_STAGE2` | `4` | Stage 2 (ODD) 프레임 수 |
+| `CR_VIDEO_FPS` | `4` | 비디오 샘플링 FPS |
+
+______________________________________________________________________
+
+## 파이프라인 상세
+
+### caption_refine v1
+
+기존 캡션을 입력으로 받아 4단계로 정제합니다.
+
+```
+[입력] 원본 캡션 + 영상
+   ↓
+Stage 1 (Ground)   — VLM으로 Hallucination / 누락 항목 확인
+   ↓
+Stage 2 (Extract)  — 구조화된 ODD(Operational Design Domain) JSON 추출
+   ↓
+Stage 3 (Verify)   — 낮은 confidence 필드 재확인
+   ↓
+Stage 4 (Refine)   — Hallucination 제거 + ODD 반영한 최종 캡션 생성
+   ↓
+[출력] refined_caption.txt + odd.json + diff.json
+```
+
+### caption_refine v2
+
+센서 데이터(egomotion)를 먼저 확정하고 VLM을 보조로 사용하는 Motion-Aware 파이프라인입니다.
+
+```
+[입력] 영상 + egomotion parquet (선택)
+   ↓
+Stage 0 (Motion)   — 곡률·IMU·속도·타임스탬프 → Phase 1 센서 확정값
+   ↓
+Stage 1 (Caption)  — NL 시나리오 캡션 (4섹션)
+   ↓
+Stage 2 (ODD)      — 4차원 ODD JSON (road_structure / environment / dynamic_elements / scene_complexity)
+   ↓
+Stage 3 (Verify)   — unknown 필드 재확인
+   ↓
+Stage 4 (CrossVal) — Cross-Validation consistency score 산출
+   ↓
+Stage 5 (Refine)   — 센서 + ODD + CrossVal 통합 최종 캡션
+   ↓
+[출력] caption.txt + odd.json + crossval.json
+```
+
+**출력 디렉토리 구조 (`CR_OUTPUT_ROOT`):**
+
+```
+caption_v3/
+├── captions/       # 최종 정제 캡션 (.txt)
+├── odd/            # ODD 구조화 결과 (.json)
+├── crossval/       # Cross-Validation 결과 (.json)
+└── progress.json   # 진행 상태 (재시작 지원)
+```
+
+______________________________________________________________________
+
+## 디렉토리 구조
+
+```
+.
+├── batch_caption.py          # 배치 캡션 생성 — Online 모드
+├── batch_caption_offline.py  # 배치 캡션 생성 — Offline 모드
+├── generate_shards.py        # 분산 처리용 Shard 파일 생성
+├── start_vllm.sh             # vLLM 서버 시작 스크립트
+│
+├── caption_refine/           # Caption Refinement v1 (4-stage)
+│   ├── batch_runner.py       # 배치 실행 진입점
+│   ├── pipeline.py           # 파이프라인 오케스트레이션
+│   ├── config.py             # 환경변수 설정
+│   ├── run_distributed.sh    # 분산 실행 스크립트
+│   └── stages/
+│       ├── stage1_ground.py
+│       ├── stage2_extract.py
+│       ├── stage3_verify.py
+│       └── stage4_refine.py
+│
+├── caption_refine_v2/        # Caption Refinement v2 (Motion-Aware, 5-stage)
+│   ├── batch_runner.py       # 배치 실행 진입점
+│   ├── pipeline.py           # 파이프라인 오케스트레이션
+│   ├── config.py             # 환경변수 설정
+│   └── stages/
+│       ├── stage0_motion.py
+│       ├── stage1_caption.py
+│       ├── stage2_odd.py
+│       ├── stage3_verify.py
+│       ├── stage4_crossval.py
+│       └── stage5_refine.py
+│
+├── prompts/                  # VLM 프롬프트 YAML 파일
+│   ├── caption_detail.yaml
+│   ├── caption_lane.yaml
+│   ├── av_cot.yaml
+│   └── ...
+│
+├── shards/                   # generate_shards.py가 생성하는 shard 파일
+└── scripts/
+    └── inference_sample.py   # 단일 추론 최소 예제
+```
