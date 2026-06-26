@@ -46,6 +46,8 @@ from caption_refine_v2.config import (
     OUTPUT_ROOT,
     PROGRESS_FILE,
     SANFLOW_GAP_PATH,
+    VIDEO_SUFFIX,
+    VIDEOS_DIR,
     VLLM_BASE_URL,
 )
 from caption_refine_v2.cosmos_client import CosmosClient
@@ -88,7 +90,14 @@ def _load_clip_ids(source: str, ids_file: str | None, limit: int | None) -> list
     elif source == "longtail":
         ids = json.loads((INDEX_DIR / "longtail_clips.json").read_text())
     elif source == "all":
-        ids = json.loads((INDEX_DIR / "clip_ids.json").read_text())
+        if not VIDEOS_DIR.exists():
+            raise FileNotFoundError(f"VIDEOS_DIR 를 찾을 수 없습니다: {VIDEOS_DIR}")
+        ids = sorted(
+            p.name[: -len(VIDEO_SUFFIX)]
+            for p in VIDEOS_DIR.iterdir()
+            if p.name.endswith(VIDEO_SUFFIX)
+        )
+        log.info("VIDEOS_DIR 스캔: %d개 클립 발견 (%s)", len(ids), VIDEOS_DIR)
     else:
         raise ValueError(f"Unknown source: {source}")
 

@@ -80,11 +80,11 @@ done
 # enforce_eager=0: CUDA 그래프 활성화 → 최대 성능
 # GPU_MEMORY_UTIL=0.45: 3번째 인스턴스 시작 체크 통과를 위한 값 (실제 할당은 GPU_BLOCKS_OVERRIDE 로 제한)
 # GPU_BLOCKS_OVERRIDE=8000: 인스턴스당 KV 캐시 블록 수 (8000×16=128K 토큰 KV 공간)
-# MAX_MODEL_LEN=32768: reasoning 모델의 긴 출력(thinking 토큰) 대응
+# MAX_MODEL_LEN=16384: vllm 0.12 multimodal 직렬화 버그 회피 (32768 이상 시 serial_utils.py 버그 발생)
 GPU_MEMORY_UTIL="${GPU_MEMORY_UTIL:-0.45}"
 GPU_BLOCKS_OVERRIDE="${GPU_BLOCKS_OVERRIDE:-8000}"
 VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-0}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-16384}"
 export GPU_MEMORY_UTIL GPU_BLOCKS_OVERRIDE VLLM_ENFORCE_EAGER MAX_MODEL_LEN
 
 MODEL="${VLLM_MODEL:-${CR_VLLM_MODEL:-nvidia/Cosmos-Reason2-8B}}"
