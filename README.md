@@ -22,6 +22,7 @@ ______________________________________________________________________
   - [7. Caption Refinement v2 (Motion-Aware, 5-stage)](#7-caption-refinement-v2-motion-aware-5-stage)
   - [8. 분산 실행](#8-분산-실행)
 - [환경변수 레퍼런스](#환경변수-레퍼런스)
+- [트러블슈팅](#트러블슈팅)
 - [파이프라인 상세](#파이프라인-상세)
   - [caption_refine v1](#caption_refine-v1)
   - [caption_refine v2](#caption_refine-v2)
@@ -123,13 +124,36 @@ uv pip install nvidia-cudnn-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12
 
 > `start_vllm.sh`가 누락된 라이브러리를 자동으로 감지하고 안내합니다.
 
-### Hugging Face 모델 접근 설정
+### Hugging Face 토큰 및 환경변수 설정
+
+프로젝트 루트에 `.env`와 `caption_refine_v2/.env` 두 파일이 필요합니다. 모두 `.gitignore` 대상이므로 직접 생성해야 합니다.
+
+**`caption_refine_v2/.env`** — HuggingFace 토큰:
 
 ```shell
-uvx hf auth login
+HF_TOKEN=hf_your_token_here
 ```
 
-> 또는 환경변수: `export HF_TOKEN="hf_..."`
+**`.env`** — 데이터 경로 및 모델 설정:
+
+```shell
+# 모델 설정
+CR_VLLM_MODEL=nvidia/Cosmos-Reason2-8B
+CR_VLLM_URL=http://localhost:8000/v1
+CR_VLLM_APIKEY=EMPTY
+
+# 데이터 경로 (서버에 맞게 수정)
+CR_DATA_ROOT=/path/to/cds-data
+CR_VIDEOS_DIR=/path/to/cds-data/front_camera_videos_samples
+CR_EGOMOTION_DIR=/path/to/cds-data/egomotion_offline
+CR_META_DIR=/path/to/cds-data/clip_meta
+CR_OUTPUT_ROOT=/path/to/cds-data/caption_v3
+
+# 배치 동시 처리 수
+CR_CONCURRENT=2
+```
+
+HuggingFace 토큰은 [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)에서 발급받을 수 있습니다. `nvidia/Cosmos-Reason2-8B`는 gated 모델이므로 해당 모델 페이지에서 접근 신청이 필요합니다.
 
 ______________________________________________________________________
 
@@ -315,6 +339,29 @@ uv run python -m caption_refine.batch_runner --ids-file my_clips.json --concurre
 
 센서(egomotion) 데이터를 선확정하여 더 정확한 ODD와 캡션을 생성합니다.
 
+**시험 실행 (샘플 20개, 원스텝):**
+
+vLLM 서버 자동 시작 + 파이프라인 실행을 한 번에 처리합니다. `.env` 파일이 설정된 상태에서:
+
+```shell
+bash run_sample20.sh
+```
+
+이미 vLLM 서버가 실행 중이라면:
+
+```shell
+bash run_sample20.sh --no-vllm
+```
+
+> `sample_20.json`은 `.gitignore` 대상입니다. 직접 생성하거나 아래 명령으로 만드세요:
+> ```shell
+> ls /path/to/videos/ | sed 's/\.camera_front_wide_120fov\.mp4$//' | sort | head -20 \
+>     | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin], indent=2))" \
+>     > sample_20.json
+> ```
+
+**배치 실행:**
+
 ```shell
 # gap 클립 처리 (기본)
 uv run python -m caption_refine_v2.batch_runner --source gap
@@ -411,6 +458,46 @@ ______________________________________________________________________
 | `CR_NUM_FRAMES_STAGE1` | `8` | Stage 1 프레임 수 |
 | `CR_NUM_FRAMES_STAGE2` | `4` | Stage 2 (ODD) 프레임 수 |
 | `CR_VIDEO_FPS` | `4` | 비디오 샘플링 FPS |
+
+______________________________________________________________________
+
+## 트러블슈팅
+
+### `start_vllm.sh` 실행 시 알아둘 점
+
+`start_vllm.sh`는 아래 항목을 자동으로 처리합니다. 별도 설정 불필요:
+
+- **`LD_LIBRARY_PATH`**: `torch/lib` 및 nvidia 라이브러리 경로를 자동으로 추가합니다. vllm `_C.so`가 `libtorch_cuda.so`를 찾지 못하는 문제를 방지합니다.
+- **`TMPDIR=/var/tmp`**: `/tmp`가 `noexec`로 마운트된 서버(NHN Cloud 포함)에서 triton 커널 컴파일과 ZMQ IPC 소켓이 실패하는 문제를 방지합니다.
+- **`HF_TOKEN` 전달**: `.env`에서 로드한 토큰을 nohup 프로세스에 명시적으로 전달합니다.
+
+### `nvidia-cusparselt-cu12` 파일 누락 오류
+
+`start_vllm.sh` 실행 시 아래 오류가 나오면:
+
+```
+[ERROR] 누락된 NVIDIA 라이브러리: libcusparseLt.so.0
+```
+
+아래 명령으로 재설치합니다:
+
+```shell
+uv pip install --reinstall nvidia-cusparselt-cu12
+```
+
+`uv sync --extra cu128` 후 파일이 실제로 생성됐는지 확인하는 방법:
+
+```shell
+ls .venv/lib/python3.12/site-packages/nvidia/cusparselt/lib/libcusparseLt.so.0
+```
+
+### `torchvision` / `torch` 버전 충돌
+
+수동으로 `uv pip install torch torchvision`을 실행하면 lock 파일 버전과 달라져 vllm ABI 불일치가 발생합니다. 반드시 lock 파일 기준으로 복원하세요:
+
+```shell
+uv sync --extra cu128   # 또는 cu130
+```
 
 ______________________________________________________________________
 

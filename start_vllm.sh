@@ -61,7 +61,8 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     exit 1
 fi
 
-export LD_LIBRARY_PATH="${NVIDIA_LIBS}${LD_LIBRARY_PATH:-}"
+TORCH_LIBS="${SCRIPT_DIR}/.venv/lib/python3.12/site-packages/torch/lib"
+export LD_LIBRARY_PATH="${TORCH_LIBS}:${NVIDIA_LIBS}${LD_LIBRARY_PATH:-}"
 
 # ── 2) ptxas 경로 — CUDA 툴킷에서 자동 탐색 ────────────────────────────────
 if [ -z "${TRITON_PTXAS_PATH:-}" ]; then
@@ -77,9 +78,19 @@ fi
 # ── 3) vLLM 서버 기동 ────────────────────────────────────────────────────────
 LOG_FILE="${SCRIPT_DIR}/vllm_${PORT}.log"
 echo "[INFO] 로그: ${LOG_FILE}"
+echo "[DEBUG] LD_LIBRARY_PATH=${LD_LIBRARY_PATH:0:120}" | tee -a "${LOG_FILE}"
 
-CUDA_VISIBLE_DEVICES="${GPU}" nohup \
-    "${SCRIPT_DIR}/.venv/bin/vllm" serve "${VLLM_MODEL}" \
+nohup env \
+    CUDA_VISIBLE_DEVICES="${GPU}" \
+    LD_LIBRARY_PATH="${LD_LIBRARY_PATH}" \
+    HUGGING_FACE_HUB_TOKEN="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}" \
+    HF_TOKEN="${HF_TOKEN:-}" \
+    TRITON_PTXAS_PATH="${TRITON_PTXAS_PATH:-}" \
+    TMPDIR="${TMPDIR:-/var/tmp}" \
+    TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/var/tmp/triton_${USER:-korea_sdv}}" \
+    TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/var/tmp/inductor_${USER:-korea_sdv}}" \
+    "${SCRIPT_DIR}/.venv/bin/python" -m vllm.entrypoints.openai.api_server \
+    --model "${VLLM_MODEL}" \
     --port "${PORT}" \
     --max-model-len "${MAX_MODEL_LEN}" \
     --allowed-local-media-path "${VIDEOS_DIR}" \
