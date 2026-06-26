@@ -105,10 +105,20 @@ if [[ "${START_VLLM}" == true ]]; then
     fi
 fi
 
+# ── 샘플 전용 출력 경로 설정 ──────────────────────────────────────────────────
+# 프로덕션 caption_v3 와 분리하여 caption_v3_sample 에 저장
+_DATA_ROOT="${CR_DATA_ROOT:-/NHNHOME/WORKSPACE/SDV_Workspace_A/bskang_e2e-research/cds-data}"
+SAMPLE_OUTPUT_ROOT="${_DATA_ROOT}/caption_v3_sample"
+export CR_OUTPUT_ROOT="${SAMPLE_OUTPUT_ROOT}"
+export CR_ODD_OUT_DIR="${SAMPLE_OUTPUT_ROOT}/odd"
+export CR_CAPTION_OUT_DIR="${SAMPLE_OUTPUT_ROOT}/captions"
+export CR_CROSSVAL_OUT_DIR="${SAMPLE_OUTPUT_ROOT}/crossval"
+
 # ── 파이프라인 실행 ────────────────────────────────────────────────────────────
 echo ""
 echo "[INFO] caption_refine_v2 파이프라인 실행 시작..."
 echo "[INFO] 샘플 20개, vLLM: ${VLLM_URL}"
+echo "[INFO] 출력 경로: ${SAMPLE_OUTPUT_ROOT}"
 echo ""
 
 uv run python -m caption_refine_v2.batch_runner \
@@ -117,4 +127,7 @@ uv run python -m caption_refine_v2.batch_runner \
     --vllm-url "${VLLM_URL}"
 
 echo ""
-echo "[INFO] 완료! 결과 위치: ${CR_OUTPUT_ROOT:-${CR_DATA_ROOT}/caption_v3}"
+echo "[INFO] 완료! 결과 위치: ${SAMPLE_OUTPUT_ROOT}"
+echo "       odd/       → ${SAMPLE_OUTPUT_ROOT}/odd/"
+echo "       captions/  → ${SAMPLE_OUTPUT_ROOT}/captions/"
+echo "       crossval/  → ${SAMPLE_OUTPUT_ROOT}/crossval/"
