@@ -34,8 +34,11 @@ PORT="${2:-8000}"
 VLLM_MODEL="${VLLM_MODEL:-nvidia/Cosmos-Reason2-2B}"
 VIDEOS_DIR="${VIDEOS_DIR:-${CR_VIDEOS_DIR:-${CR_DATA_ROOT:-/Data1/home/bskang/cds-data}/front_camera_videos}}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-16384}"
+GPU_MEMORY_UTIL="${GPU_MEMORY_UTIL:-0.90}"
+GPU_BLOCKS_OVERRIDE="${GPU_BLOCKS_OVERRIDE:-}"   # 비어있으면 vLLM 자동 계산 (단일 인스턴스 권장)
+VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-}"     # 1이면 --enforce-eager (CUDA 그래프 비활성화, 메모리 절약)
 
-echo "[INFO] GPU=$GPU  PORT=$PORT  MODEL=$VLLM_MODEL"
+echo "[INFO] GPU=$GPU  PORT=$PORT  MODEL=$VLLM_MODEL  GPU_MEMORY_UTIL=$GPU_MEMORY_UTIL  ENFORCE_EAGER=${VLLM_ENFORCE_EAGER:-off}"
 echo "[INFO] VIDEOS_DIR=$VIDEOS_DIR"
 
 # ── 1) NVIDIA 라이브러리 경로 — 프로젝트 venv에서 자동 탐색 ─────────────────
@@ -80,6 +83,26 @@ LOG_FILE="${SCRIPT_DIR}/vllm_${PORT}.log"
 echo "[INFO] 로그: ${LOG_FILE}"
 echo "[DEBUG] LD_LIBRARY_PATH=${LD_LIBRARY_PATH:0:120}" | tee -a "${LOG_FILE}"
 
+# vLLM 인자 구성 (GPU_BLOCKS_OVERRIDE 지정 시 --num-gpu-blocks-override 추가)
+# 멀티 인스턴스 기동 시 이 값을 설정하면 KV 캐시 할당이 제한되어 OOM을 방지한다.
+VLLM_ARGS=(
+    --model "${VLLM_MODEL}"
+    --port "${PORT}"
+    --max-model-len "${MAX_MODEL_LEN}"
+    --gpu-memory-utilization "${GPU_MEMORY_UTIL}"
+    --allowed-local-media-path "${VIDEOS_DIR}"
+    --media-io-kwargs '{"video": {"num_frames": -1}}'
+    --reasoning-parser qwen3
+)
+if [[ -n "${GPU_BLOCKS_OVERRIDE:-}" ]]; then
+    VLLM_ARGS+=(--num-gpu-blocks-override "${GPU_BLOCKS_OVERRIDE}")
+    echo "[INFO] KV 캐시 블록 제한: ${GPU_BLOCKS_OVERRIDE} 블록 (멀티 인스턴스 모드)"
+fi
+if [[ "${VLLM_ENFORCE_EAGER:-}" == "1" ]]; then
+    VLLM_ARGS+=(--enforce-eager)
+    echo "[INFO] enforce-eager 모드 활성화 (CUDA 그래프 비활성화 — GPU 메모리 ~10 GiB 절약)"
+fi
+
 nohup env \
     CUDA_VISIBLE_DEVICES="${GPU}" \
     LD_LIBRARY_PATH="${LD_LIBRARY_PATH}" \
@@ -89,13 +112,10 @@ nohup env \
     TMPDIR="${TMPDIR:-/var/tmp}" \
     TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/var/tmp/triton_${USER:-korea_sdv}}" \
     TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-/var/tmp/inductor_${USER:-korea_sdv}}" \
+    GPU_BLOCKS_OVERRIDE="${GPU_BLOCKS_OVERRIDE:-}" \
+    VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-}" \
     "${SCRIPT_DIR}/.venv/bin/python" -m vllm.entrypoints.openai.api_server \
-    --model "${VLLM_MODEL}" \
-    --port "${PORT}" \
-    --max-model-len "${MAX_MODEL_LEN}" \
-    --allowed-local-media-path "${VIDEOS_DIR}" \
-    --media-io-kwargs '{"video": {"num_frames": -1}}' \
-    --reasoning-parser qwen3 \
+    "${VLLM_ARGS[@]}" \
     > "${LOG_FILE}" 2>&1 &
 
 echo "[INFO] vLLM 시작 완료 — PID=$!"
