@@ -26,6 +26,14 @@ v2 변경사항:
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# 프로젝트 루트 .env 로드 (caption_refine_v2/.env → 루트 .env 순으로 적용)
+# 이미 셸에서 설정된 환경변수는 덮어쓰지 않음 (override=False)
+_HERE = Path(__file__).parent
+load_dotenv(_HERE / ".env", override=False)
+load_dotenv(_HERE.parent / ".env", override=False)
+
 # ── vLLM 서버 ─────────────────────────────────────────────────────────────────
 VLLM_BASE_URL  = os.getenv("CR_VLLM_URL",   "http://localhost:8000/v1")
 VLLM_MODEL     = os.getenv("CR_VLLM_MODEL",  "nvidia/Cosmos-Reason2-2B")
