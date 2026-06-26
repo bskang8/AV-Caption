@@ -21,8 +21,8 @@
 # 검증된 설정 (B200 183 GiB, Cosmos-Reason2-8B):
 #   인스턴스 2개: GPU_MEMORY_UTIL=0.45, GPU_BLOCKS_OVERRIDE=8000, MAX_MODEL_LEN=32768
 #                enforce_eager 없음 → 인스턴스당 ~43.7 GiB, 합계 ~87.5 GiB
-#   인스턴스 3개: 현재 설정으로는 불가 (87.5 GiB + 17 GiB 로딩 > 0.45×179 GiB)
-#                enforce_eager=1 또는 max_model_len=16384 으로 낮춰야 가능
+#   인스턴스 3개: max_model_len=16384 에서는 가능 (검증됨, 3×45.2 GiB = 135.5 GiB / 183 GiB)
+#                max_model_len=32768 에서는 불가 (profiling peak 초과)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
