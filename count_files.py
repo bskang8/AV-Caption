@@ -17,6 +17,7 @@
 """파일 개수를 확인하는 스크립트 (효율적 버전)"""
 
 import os
+import sys
 from pathlib import Path
 from collections import Counter
 import time
@@ -101,8 +102,11 @@ def count_files_fast(directory_path: str, recursive: bool = False, show_progress
 
 
 def main():
-    # 확인할 경로
-    target_path = "/Data1/home/bskang/cds-data/captions"
+    # 확인할 경로 (커맨드라인 인자 또는 기본값)
+    if len(sys.argv) > 1:
+        target_path = sys.argv[1]
+    else:
+        target_path = "/Data1/home/bskang/cds-data/captions"
     
     print(f"📁 디렉토리 분석: {target_path}\n")
     
